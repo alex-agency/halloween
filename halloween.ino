@@ -42,6 +42,7 @@ void setup() {
 
   set_matrix_rgb(0,0,0);
   setup_timer1_ovf();
+  matrix_test();
 }
 
 ISR(TIMER1_OVF_vect) {
@@ -84,12 +85,7 @@ ISR(TIMER1_OVF_vect) {
 }
 
 void loop() {
-
-  matrix_test();
-
   set_matrix_rgb(0,0,0);
-
-  delay(3000);
 
   set_row_byte_blue(0, B00111100, __max_brightness);
   set_row_byte_blue(1, B01111110, __max_brightness);
@@ -158,12 +154,10 @@ void loop() {
   set_row_byte_blue(4, B11111111, __max_brightness);
   set_row_byte_blue(5, B11100111, __max_brightness);
   set_row_byte_blue(6, B01100110, __max_brightness);
-  set_row_byte_blue(4, B00000000, __max_brightness);
-  set_row_byte_blue(5, B00011000, __max_brightness);
-  set_row_byte_blue(6, B00011000, __max_brightness);
+  set_row_byte_red(4, B00000000, __max_brightness);
+  set_row_byte_red(5, B00011000, __max_brightness);
+  set_row_byte_red(6, B00011000, __max_brightness);
   delay(1000);
-
-  set_matrix_rgb(0,0,0);
 }
 
 void setup_timer1_ovf() {
@@ -246,16 +240,25 @@ void set_matrix_rgb(byte red, byte green, byte blue) {
 }
 
 void matrix_test() {
+  set_matrix_rgb(__max_brightness,0,0);
+  delay(1000);
+  set_matrix_rgb(0,__max_brightness,0);
+  delay(1000);
+  set_matrix_rgb(0,0,__max_brightness);
+  delay(1000);
+  set_matrix_rgb(0,0,0);
   byte ctr1;
   byte ctr2;
   for(ctr2 = 0; ctr2 <= __max_row; ctr2++) {
     for(ctr1 = 0; ctr1 <= __max_led; ctr1++) {
       set_led_rgb(ctr2,ctr1,__max_brightness,0,0);
-      delay(500);
+      delay(200);
       set_led_rgb(ctr2,ctr1,0,__max_brightness,0);
-      delay(500);
+      delay(200);
       set_led_rgb(ctr2,ctr1,0,0,__max_brightness);
-      delay(500);
+      delay(200);
     }
-  } 
+  }
+  set_matrix_rgb(0,0,0);
+  delay(1000);
 }
