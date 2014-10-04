@@ -1,20 +1,18 @@
+#include <SPI.h>
 
 // Debug info
 #define DEBUG
 
-#define __spi_clock 13   // SCK - hardware SPI
-#define __spi_data 11    // MOSI - hardware SPI
-#define __spi_data_in 12 // MISO - hardware SPI (unused)
-#define __spi_latch 10   // SS - hardware SPI
+#define __spi_latch 9
 
 #define __TIMER1_MAX 0xFFFF // 16 bit CTR
-#define __TIMER1_CNT 0x0130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
+#define __TIMER1_CNT 0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
 
 #define __rows 8
 #define __max_row __rows-1
 #define __leds_per_row 8
 #define __max_led __leds_per_row-1
-#define __brightness_levels 20 // 0...15 above 28 is bad for ISR
+#define __brightness_levels 50
 #define __max_brightness __brightness_levels-1
 
 byte brightness_red[__leds_per_row][__rows]; 
@@ -34,14 +32,8 @@ void setup() {
   fdev_setup_stream(&serial_out, serial_putchar, NULL, _FDEV_SETUP_WRITE);
   stdout = stderr = &serial_out;
   // Initialize SPI
-  pinMode(__spi_clock,OUTPUT);
+  SPI.begin();
   pinMode(__spi_latch,OUTPUT);
-  pinMode(__spi_data,OUTPUT);
-  //pinMode(__spi_data_in,INPUT);
-  digitalWrite(__spi_latch,LOW);
-  digitalWrite(__spi_data,LOW);
-  digitalWrite(__spi_clock,LOW);
-  setup_hardware_spi();
   delay(10);
 
   set_matrix_rgb(0,0,0);
@@ -78,19 +70,16 @@ ISR(TIMER1_OVF_vect) {
       }
 
       digitalWrite(__spi_latch,LOW);
-      spi_transfer(blue);
-      spi_transfer(green);
-      spi_transfer(red);
-      spi_transfer(B00000001<<row);
+      SPI.transfer(B00000001<<row);
+      SPI.transfer(blue);
+      SPI.transfer(green);
+      SPI.transfer(red);
       digitalWrite(__spi_latch,HIGH);
-      digitalWrite(__spi_latch,LOW);
     }
   }
 }
 
 void loop() {
-  set_matrix_rgb(0,0,0);
-
   set_row_byte_blue(0, B00111100, __max_brightness);
   set_row_byte_blue(1, B01111110, __max_brightness);
   set_row_byte_blue(2, B11111111, __max_brightness);
@@ -103,65 +92,44 @@ void loop() {
   set_row_byte_blue(3, B11111111, __max_brightness);
   set_row_byte_blue(4, B11110011, __max_brightness);
   set_row_byte_blue(5, B11110011, __max_brightness);
-  delay(500);
+  delay(250);
   set_row_byte_blue(4, B11111111, __max_brightness);
   set_row_byte_blue(5, B11100111, __max_brightness);
   set_row_byte_blue(6, B01100110, __max_brightness);
   delay(1000);
 
   set_row_byte_blue(0, B00000000, __max_brightness);
-  delay(100);
+  delay(50);
   set_row_byte_blue(1, B00000000, __max_brightness);
   set_row_byte_blue(2, B00111100, __max_brightness);
   set_row_byte_blue(4, B11111111, __max_brightness);
   set_row_byte_blue(5, B11111111, __max_brightness);
   set_row_byte_blue(6, B00111100, __max_brightness);
   set_row_byte_blue(7, B00000000, __max_brightness);
-  delay(100);
+  delay(50);
   set_row_byte_blue(2, B00000000, __max_brightness);
   set_row_byte_blue(3, B00111100, __max_brightness);
   set_row_byte_blue(5, B01111110, __max_brightness);
   set_row_byte_blue(6, B00011000, __max_brightness);
-  delay(100);
+  delay(50);
   set_row_byte_blue(3, B00000000, __max_brightness);
   set_row_byte_blue(4, B10000001, __max_brightness);
   set_row_byte_blue(6, B00000000, __max_brightness);
-  delay(100);
+  delay(50);
   set_row_byte_blue(3, B00111100, __max_brightness);
   set_row_byte_blue(4, B11111111, __max_brightness);  
   set_row_byte_blue(6, B00011000, __max_brightness);
-  delay(100);
+  delay(50);
   set_row_byte_blue(2, B00111100, __max_brightness);
   set_row_byte_blue(3, B11111111, __max_brightness);
   set_row_byte_blue(5, B11111111, __max_brightness);
   set_row_byte_blue(6, B00111100, __max_brightness);
-  delay(100);
+  delay(50);
   set_row_byte_blue(0, B00111100, __max_brightness);
   set_row_byte_blue(1, B01111110, __max_brightness);
   set_row_byte_blue(2, B11111111, __max_brightness);
   set_row_byte_blue(6, B01111110, __max_brightness);
   set_row_byte_blue(7, B00111100, __max_brightness);
-  delay(1000);
-
-  set_row_byte_blue(3, B11111001, __max_brightness);
-  set_row_byte_blue(4, B11111001, __max_brightness);
-  set_row_byte_red(3, B00000110, __max_brightness);
-  set_row_byte_red(4, B00000110, __max_brightness);
-  delay(1000);
-  set_row_byte_blue(3, B11111111, __max_brightness);
-  set_row_byte_blue(4, B11110011, __max_brightness);
-  set_row_byte_blue(5, B11110011, __max_brightness);
-  set_row_byte_red(3, B00000000, __max_brightness);
-  set_row_byte_red(4, B00001100, __max_brightness);
-  set_row_byte_red(5, B00001100, __max_brightness);
-  delay(500);
-  set_row_byte_blue(4, B11111111, __max_brightness);
-  set_row_byte_blue(5, B11100111, __max_brightness);
-  set_row_byte_blue(6, B01100110, __max_brightness);
-  set_row_byte_red(4, B00000000, __max_brightness);
-  set_row_byte_red(5, B00011000, __max_brightness);
-  set_row_byte_red(6, B00011000, __max_brightness);
-  delay(1000);
 }
 
 void setup_timer1_ovf() {
@@ -189,36 +157,6 @@ void setup_timer1_ovf() {
   sei(); 
 }
 
-void setup_hardware_spi(void) {
-  byte clr;
-  // spi prescaler: 
-  // SPI2X SPR1 SPR0
-  //   0     0     0    fosc/4
-  //   0     0     1    fosc/16
-  //   0     1     0    fosc/64
-  //   0     1     1    fosc/128
-  //   1     0     0    fosc/2
-  //   1     0     1    fosc/8
-  //   1     1     0    fosc/32
-  //   1     1     1    fosc/64
-  SPCR |= ( (1<<SPE) | (1<<MSTR) ); // enable SPI as master
-  //SPCR |= ( (1<<SPR1) ); // set prescaler bits
-  SPCR &= ~ ( (1<<SPR1) | (1<<SPR0) ); // clear prescaler bits
-  clr=SPSR; // clear SPI status reg
-  clr=SPDR; // clear SPI data reg
-  SPSR |= (1<<SPI2X); // set prescaler bits
-  //SPSR &= ~(1<<SPI2X); // clear prescaler bits
-}
-
-byte spi_transfer(byte data)
-{
-  SPDR = data;                    // Start the transmission
-  while (!(SPSR & (1<<SPIF)))     // Wait the end of the transmission
-  {
-  };
-  return SPDR;                    // return the received byte, we don't need that
-}
-
 void set_led_red(byte row, byte led, byte red) {
   brightness_red[row][led] = red;
 }
@@ -237,6 +175,20 @@ void set_led_rgb(byte row, byte led, byte red, byte green, byte blue) {
   set_led_red(row,led,red);
   set_led_green(row,led,green);
   set_led_blue(row,led,blue);
+}
+
+void set_row_rgb(byte row, byte red, byte green, byte blue) {
+  byte ctr1;
+  for(ctr1 = 0; ctr1 <= __max_led; ctr1++) {
+      set_led_rgb(row,ctr1,red,green,blue);
+  }
+}
+
+void set_column_rgb(byte column, byte red, byte green, byte blue) {
+  byte ctr1;
+  for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
+      set_led_rgb(ctr1,column,red,green,blue);
+  }
 }
 
 void set_row_byte_rgb(byte row, byte data_byte, byte red, byte green, byte blue) {
@@ -274,25 +226,44 @@ void set_matrix_rgb(byte red, byte green, byte blue) {
 }
 
 void matrix_test() {
-  set_matrix_rgb(__max_brightness,0,0);
-  delay(1000);
-  set_matrix_rgb(0,__max_brightness,0);
-  delay(1000);
-  set_matrix_rgb(0,0,__max_brightness);
-  delay(1000);
-  set_matrix_rgb(0,0,0);
   byte ctr1;
   byte ctr2;
-  for(ctr2 = 0; ctr2 <= __max_row; ctr2++) {
-    for(ctr1 = 0; ctr1 <= __max_led; ctr1++) {
-      set_led_rgb(ctr2,ctr1,__max_brightness,0,0);
-      delay(200);
-      set_led_rgb(ctr2,ctr1,0,__max_brightness,0);
-      delay(200);
-      set_led_rgb(ctr2,ctr1,0,0,__max_brightness);
-      delay(200);
-    }
+  for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
+    set_matrix_rgb(ctr1,0,0);
+    delay(5);
   }
+  delay(500);
+  for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
+    set_matrix_rgb(0,ctr1,0);
+    delay(5);
+  }
+  delay(500);
+  for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
+    set_matrix_rgb(0,0,ctr1);
+    delay(5);
+  }
+  delay(500);
   set_matrix_rgb(0,0,0);
+  
+  for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
+    set_row_rgb(ctr1,__max_brightness,0,0);
+    delay(300);
+    set_row_rgb(ctr1,0,__max_brightness,0);
+    delay(300);
+    set_row_rgb(ctr1,0,0,__max_brightness);
+    delay(300);
+    set_matrix_rgb(0,0,0);
+  }
+
+  for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
+    set_column_rgb(ctr1,__max_brightness,0,0);
+    delay(300);
+    set_column_rgb(ctr1,0,__max_brightness,0);
+    delay(300);
+    set_column_rgb(ctr1,0,0,__max_brightness);
+    delay(300);
+    set_matrix_rgb(0,0,0);
+  }
+
   delay(1000);
 }
