@@ -1,12 +1,10 @@
-// Import libraries
-#include <SPI.h>
 
 // Debug info
 #define DEBUG
 
 #define __spi_clock 13   // SCK - hardware SPI
 #define __spi_data 11    // MOSI - hardware SPI
-#define __spi_data_in 12 // MISO - hardware SPI
+#define __spi_data_in 12 // MISO - hardware SPI (unused)
 #define __spi_latch 10   // SS - hardware SPI
 
 #define __TIMER1_MAX 0xFFFF // 16 bit CTR
@@ -36,8 +34,14 @@ void setup() {
   fdev_setup_stream(&serial_out, serial_putchar, NULL, _FDEV_SETUP_WRITE);
   stdout = stderr = &serial_out;
   // Initialize SPI
-  pinMode(__spi_latch, OUTPUT);
-  SPI.begin();
+  pinMode(__spi_clock,OUTPUT);
+  pinMode(__spi_latch,OUTPUT);
+  pinMode(__spi_data,OUTPUT);
+  //pinMode(__spi_data_in,INPUT);
+  digitalWrite(__spi_latch,LOW);
+  digitalWrite(__spi_data,LOW);
+  digitalWrite(__spi_clock,LOW);
+  setup_hardware_spi();
   delay(10);
 
   set_matrix_rgb(0,0,0);
@@ -74,10 +78,10 @@ ISR(TIMER1_OVF_vect) {
       }
 
       digitalWrite(__spi_latch,LOW);
-      SPI.transfer(blue);
-      SPI.transfer(green);
-      SPI.transfer(red);
-      SPI.transfer(B00000001<<row);
+      spi_transfer(blue);
+      spi_transfer(green);
+      spi_transfer(red);
+      spi_transfer(B00000001<<row);
       digitalWrite(__spi_latch,HIGH);
       digitalWrite(__spi_latch,LOW);
     }
@@ -183,6 +187,36 @@ void setup_timer1_ovf() {
   TCNT1 = __TIMER1_MAX - __TIMER1_CNT;
   // enable all interrupts
   sei(); 
+}
+
+void setup_hardware_spi(void) {
+  byte clr;
+  // spi prescaler: 
+  // SPI2X SPR1 SPR0
+  //   0     0     0    fosc/4
+  //   0     0     1    fosc/16
+  //   0     1     0    fosc/64
+  //   0     1     1    fosc/128
+  //   1     0     0    fosc/2
+  //   1     0     1    fosc/8
+  //   1     1     0    fosc/32
+  //   1     1     1    fosc/64
+  SPCR |= ( (1<<SPE) | (1<<MSTR) ); // enable SPI as master
+  //SPCR |= ( (1<<SPR1) ); // set prescaler bits
+  SPCR &= ~ ( (1<<SPR1) | (1<<SPR0) ); // clear prescaler bits
+  clr=SPSR; // clear SPI status reg
+  clr=SPDR; // clear SPI data reg
+  SPSR |= (1<<SPI2X); // set prescaler bits
+  //SPSR &= ~(1<<SPI2X); // clear prescaler bits
+}
+
+byte spi_transfer(byte data)
+{
+  SPDR = data;                    // Start the transmission
+  while (!(SPSR & (1<<SPIF)))     // Wait the end of the transmission
+  {
+  };
+  return SPDR;                    // return the received byte, we don't need that
 }
 
 void set_led_red(byte row, byte led, byte red) {
