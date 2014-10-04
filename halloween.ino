@@ -83,48 +83,48 @@ void loop() {
   set_row_byte_blue(0, B00111100, __max_brightness);
   set_row_byte_blue(1, B01111110, __max_brightness);
   set_row_byte_blue(2, B11111111, __max_brightness);
-  set_row_byte_blue(3, B11111001, __max_brightness);
-  set_row_byte_blue(4, B11111001, __max_brightness);
+  set_row_byte_blue(3, B11110011, __max_brightness);
+  set_row_byte_blue(4, B11110011, __max_brightness);
   set_row_byte_blue(5, B11111111, __max_brightness);
   set_row_byte_blue(6, B01111110, __max_brightness);
   set_row_byte_blue(7, B00111100, __max_brightness);
-  delay(1000);
+  delay(500);
   set_row_byte_blue(3, B11111111, __max_brightness);
-  set_row_byte_blue(4, B11110011, __max_brightness);
-  set_row_byte_blue(5, B11110011, __max_brightness);
-  delay(250);
-  set_row_byte_blue(4, B11111111, __max_brightness);
+  set_row_byte_blue(4, B11100111, __max_brightness);
   set_row_byte_blue(5, B11100111, __max_brightness);
-  set_row_byte_blue(6, B01100110, __max_brightness);
-  delay(1000);
+  delay(30);
+  set_row_byte_blue(4, B11111111, __max_brightness);
+  set_row_byte_blue(5, B11001111, __max_brightness);
+  set_row_byte_blue(6, B01001110, __max_brightness);
+  delay(500);
 
   set_row_byte_blue(0, B00000000, __max_brightness);
-  delay(50);
+  delay(5);
   set_row_byte_blue(1, B00000000, __max_brightness);
   set_row_byte_blue(2, B00111100, __max_brightness);
   set_row_byte_blue(4, B11111111, __max_brightness);
   set_row_byte_blue(5, B11111111, __max_brightness);
   set_row_byte_blue(6, B00111100, __max_brightness);
   set_row_byte_blue(7, B00000000, __max_brightness);
-  delay(50);
+  delay(5);
   set_row_byte_blue(2, B00000000, __max_brightness);
   set_row_byte_blue(3, B00111100, __max_brightness);
   set_row_byte_blue(5, B01111110, __max_brightness);
   set_row_byte_blue(6, B00011000, __max_brightness);
-  delay(50);
+  delay(5);
   set_row_byte_blue(3, B00000000, __max_brightness);
   set_row_byte_blue(4, B10000001, __max_brightness);
   set_row_byte_blue(6, B00000000, __max_brightness);
-  delay(50);
+  delay(5);
   set_row_byte_blue(3, B00111100, __max_brightness);
   set_row_byte_blue(4, B11111111, __max_brightness);  
   set_row_byte_blue(6, B00011000, __max_brightness);
-  delay(50);
+  delay(5);
   set_row_byte_blue(2, B00111100, __max_brightness);
   set_row_byte_blue(3, B11111111, __max_brightness);
   set_row_byte_blue(5, B11111111, __max_brightness);
   set_row_byte_blue(6, B00111100, __max_brightness);
-  delay(50);
+  delay(5);
   set_row_byte_blue(0, B00111100, __max_brightness);
   set_row_byte_blue(1, B01111110, __max_brightness);
   set_row_byte_blue(2, B11111111, __max_brightness);
@@ -230,38 +230,35 @@ void matrix_test() {
   byte ctr2;
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(ctr1,0,0);
-    delay(5);
+    delay(3);
   }
-  delay(500);
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,ctr1,0);
-    delay(5);
+    delay(3);
   }
-  delay(500);
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,0,ctr1);
-    delay(5);
+    delay(3);
   }
-  delay(500);
   set_matrix_rgb(0,0,0);
   
   for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
     set_row_rgb(ctr1,__max_brightness,0,0);
-    delay(300);
+    delay(50);
     set_row_rgb(ctr1,0,__max_brightness,0);
-    delay(300);
+    delay(50);
     set_row_rgb(ctr1,0,0,__max_brightness);
-    delay(300);
+    delay(50);
     set_matrix_rgb(0,0,0);
   }
 
   for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
     set_column_rgb(ctr1,__max_brightness,0,0);
-    delay(300);
+    delay(50);
     set_column_rgb(ctr1,0,__max_brightness,0);
-    delay(300);
+    delay(50);
     set_column_rgb(ctr1,0,0,__max_brightness);
-    delay(300);
+    delay(50);
     set_matrix_rgb(0,0,0);
   }
 
