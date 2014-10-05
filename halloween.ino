@@ -16,20 +16,24 @@
 
 byte brightness_red[__leds_per_row][__rows]; 
 byte brightness_green[__leds_per_row][__rows];
-byte brightness_blue[__leds_per_row][__rows]; 
+byte brightness_blue[__leds_per_row][__rows];
+
+#define NICE_EYE 0
+#define EVIL_EYE 40 // 5*8
+#define SLEEP_EYE 80 // 10*8
 
 uint8_t blinkIndex[] = { 1, 2, 3, 4, 3, 2, 1 }; // Blink bitmap sequence
 uint8_t blinkCountdown = 100; // Countdown to next blink (in frames)
 uint8_t gazeCountdown  =  50; // Countdown to next eye movement
 uint8_t gazeFrames     =  20; // Duration of eye movement (smaller = faster)
-uint8_t eyeOffset = 0;
+uint8_t eyeOffset = NICE_EYE;
 uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
 uint8_t newX = 3, newY = 3;   // Next pupil position
 int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
-    // The NICE eye, both left and right
+    // The NICE eye
     { B00111100,         // Fully open nice eye
         B01111110,
         B11111111,
@@ -71,7 +75,7 @@ blinkImg[][8] = {    // Eye animation frames
         B00000000,
         B00000000 },
 
-    // The EVIL eye, left
+    // The EVIL eye
     { B00000000,         // Fully open evil eye
         B11000000,
         B11111000,
@@ -112,8 +116,8 @@ blinkImg[][8] = {    // Eye animation frames
         B00000000,
         B00000000,
         B00000000 },
-    // The EVIL eye, right
-    { B00000000,         // Fully open evil eye
+    // The SLEEP eye
+    { B00000000,         // Fully open sleep eye
         B00000011,
         B00011111,
         B11111110,
@@ -145,7 +149,7 @@ blinkImg[][8] = {    // Eye animation frames
         B11111100,
         B00000000,
         B00000000 },
-    { B00000000,         // Fully closed evil eye
+    { B00000000,         // Fully sleep evil eye
         B00000000,
         B00000000,
         B00000000,
@@ -217,12 +221,14 @@ ISR(TIMER1_OVF_vect) {
 
 void loop() 
 {
+  eyeOffset = EVIL_EYE;
+  
   const uint8_t* eye = 
             &blinkImg[
             (blinkCountdown < sizeof(blinkIndex)) ? // Currently blinking?
             blinkIndex[blinkCountdown] :            // Yes, look up bitmap #
             0                                       // No, show bitmap 0
-            ][0] + eyeOffset; // 8*5
+            ][0] + eyeOffset;
   
   blinkCountdown--;
     if (blinkCountdown == 0) 
@@ -238,8 +244,13 @@ void loop()
       pupilX = newX; pupilY = newY;
       
       // Pick random positions
-      newX = random(1,6); newY = random(2,5);
-      
+      if(eyeOffset == NICE_EYE) {
+        newX = random(1,6); newY = random(2,5);
+      }
+      else if(eyeOffset == EVIL_EYE) {
+        newX = random(2,6); newY = 4;
+      }
+        
       dX            = newX - pupilX;           // Horizontal distance to move
       dY            = newY - pupilY;           // Vertical distance to move
       gazeFrames    = random(3, 15);           // Duration of pupil movement
@@ -259,7 +270,7 @@ void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
         image = image-(3<<pupilX);
       }
       
-      set_row_byte_blue(ctr1,image,__max_brightness);
+      set_row_byte_red(ctr1,image,__max_brightness);
   }
   #ifdef DEBUG
     //printf_P(PSTR("pupil: x=%d, y=%d\n\r"), pupilX, pupilY);
