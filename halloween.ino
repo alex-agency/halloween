@@ -1,8 +1,12 @@
 #include <SPI.h>
+#include "Ultrasonic.h"
 
 #define DEBUG
 
 #define __spi_latch 9
+#define __pir_pin 7
+
+Ultrasonic ultrasonic(6,5); // (Trig PIN,Echo PIN)
 
 #define __TIMER1_MAX 0xFFFF // 16 bit CTR
 #define __TIMER1_CNT 0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
@@ -20,16 +24,18 @@ byte brightness_blue[__leds_per_row][__rows];
 
 #define NICE_EYE 0
 #define EVIL_EYE 40 // 5*8
-#define SLEEP_EYE 80 // 10*8
+#define BORED_EYE 80 // 10*8
 
 uint8_t blinkIndex[] = { 1, 2, 3, 4, 3, 2, 1 }; // Blink bitmap sequence
 uint8_t blinkCountdown = 100; // Countdown to next blink (in frames)
 uint8_t gazeCountdown  =  50; // Countdown to next eye movement
 uint8_t gazeFrames     =  20; // Duration of eye movement (smaller = faster)
-uint8_t eyeOffset = NICE_EYE;
+uint8_t eyeOffset = BORED_EYE;
 uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
 uint8_t newX = 3, newY = 3;   // Next pupil position
 int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
+
+uint8_t cm;
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -116,45 +122,45 @@ blinkImg[][8] = {    // Eye animation frames
         B00000000,
         B00000000,
         B00000000 },
-    // The SLEEP eye
-    { B00000000,         // Fully open sleep eye
-        B00000011,
-        B00011111,
-        B11111110,
-        B11111110,
-        B11111100,
-        B01111100,
-        B00111000 },
-    { B00000000,
+    // The BORED eye
+    { B00000000,         // Fully open bored eye
         B00000000,
-        B00011111,
         B11111110,
         B11111110,
-        B11111100,
+        B11000110,
         B01111100,
-        B00111000 },
-    { B00000000,
         B00000000,
-        B00011111,
-        B11111110,
-        B11111110,
-        B11111100,
-        B01111100,
         B00000000 },
     { B00000000,
         B00000000,
         B00000000,
         B11111110,
-        B11111110,
-        B11111100,
+        B11000110,
+        B01111100,
         B00000000,
         B00000000 },
-    { B00000000,         // Fully sleep evil eye
+    { B00000000,
         B00000000,
         B00000000,
         B00000000,
-        B11111110,
+        B11000110,
+        B01111100,
         B00000000,
+        B00000000 },
+    { B00000000,
+        B00000000,
+        B00000000,
+        B00000000,
+        B10000010,
+        B01111100,
+        B00000000,
+        B00000000 },
+    { B00000000,         // Fully closed bored eye
+        B00000000,
+        B00000000,
+        B00000000,
+        B00000000,
+        B01111100,
         B00000000,
         B00000000 }
 };
@@ -221,8 +227,21 @@ ISR(TIMER1_OVF_vect) {
 
 void loop() 
 {
-  eyeOffset = EVIL_EYE;
+  if(digitalRead(__pir_pin) == LOW)
+    eyeOffset = BORED_EYE;
+  else
+    eyeOffset = NICE_EYE;
   
+  cm = ultrasonic.Ranging(CM);
+  delay(250);
+  #ifdef DEBUG
+    printf_P(PSTR("cm: %d\n\r"), cm);
+  #endif
+
+  if(cm <= 100) {
+    eyeOffset = EVIL_EYE;
+  }
+
   const uint8_t* eye = 
             &blinkImg[
             (blinkCountdown < sizeof(blinkIndex)) ? // Currently blinking?
@@ -234,7 +253,7 @@ void loop()
     if (blinkCountdown == 0) 
         blinkCountdown = random(5, 180);
 
-  if(--gazeCountdown <= gazeFrames) {
+  if(--gazeCountdown <= gazeFrames && eyeOffset != BORED_EYE) {
     // pupil in motion - draw pupil at interim position
     drawEyes(eye, 
       newX - (dX * gazeCountdown / gazeFrames),
@@ -256,6 +275,8 @@ void loop()
       gazeFrames    = random(3, 15);           // Duration of pupil movement
       gazeCountdown = random(gazeFrames, 120); // Count to end of next movement
     }
+  } else if(eyeOffset == BORED_EYE) {
+      drawEyes(eye, 8, 8);
   } else {
       // Not in motion yet -- draw pupil at current static position
       drawEyes(eye, pupilX, pupilY);
@@ -270,7 +291,13 @@ void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
         image = image-(3<<pupilX);
       }
       
-      set_row_byte_red(ctr1,image,__max_brightness);
+      if(eyeOffset == EVIL_EYE) {
+        set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
+      } else if(eyeOffset == NICE_EYE) {
+        set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
+      } else {
+        set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
+      }
   }
   #ifdef DEBUG
     //printf_P(PSTR("pupil: x=%d, y=%d\n\r"), pupilX, pupilY);
