@@ -1,12 +1,11 @@
 #include <SPI.h>
-#include "Ultrasonic.h"
 
 #define DEBUG
 
 #define __spi_latch 9
 #define __pir_pin 7
-
-Ultrasonic ultrasonic(6,5); // (Trig PIN,Echo PIN)
+#define __trig_pin 6
+#define __echo_pin 5
 
 #define __TIMER1_MAX 0xFFFF // 16 bit CTR
 #define __TIMER1_CNT 0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
@@ -35,7 +34,7 @@ uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
 uint8_t newX = 3, newY = 3;   // Next pupil position
 int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
 
-uint8_t cm;
+long distance_cm;
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -182,6 +181,10 @@ void setup() {
   pinMode(__spi_latch,OUTPUT);
   delay(10);
 
+  pinMode(__pir_pin,INPUT);
+  pinMode(__trig_pin,OUTPUT);
+  pinMode(__echo_pin,INPUT);
+
   set_matrix_rgb(0,0,0);
   setup_timer1_ovf();
   matrix_test(10);
@@ -223,6 +226,13 @@ ISR(TIMER1_OVF_vect) {
       digitalWrite(__spi_latch,HIGH);
     }
   }
+
+  digitalWrite(__trig_pin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(__trig_pin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(__trig_pin, LOW);
+  distance_cm = pulseIn(__echo_pin,HIGH,12000) /29 / 2; // 12ms = 200cm timeout
 }
 
 void loop() 
@@ -231,14 +241,11 @@ void loop()
     eyeOffset = BORED_EYE;
   else
     eyeOffset = NICE_EYE;
-  
-  cm = ultrasonic.Ranging(CM);
-  delay(250);
-  #ifdef DEBUG
-    printf_P(PSTR("cm: %d\n\r"), cm);
-  #endif
 
-  if(cm <= 100) {
+  #ifdef DEBUG
+    printf_P(PSTR("cm: %d\n\r"), distance_cm);
+  #endif
+  if(distance_cm <= 50) {
     eyeOffset = EVIL_EYE;
   }
 
