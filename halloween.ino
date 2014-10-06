@@ -34,7 +34,9 @@ uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
 uint8_t newX = 3, newY = 3;   // Next pupil position
 int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
 
-long distance_cm;
+float distance;
+unsigned int toggle = 0;  //used to keep the state of the LED
+unsigned int count = 0;   //used to keep count of how many interrupts were fired
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -181,13 +183,15 @@ void setup() {
   pinMode(__spi_latch,OUTPUT);
   delay(10);
 
-  pinMode(__pir_pin,INPUT);
-  pinMode(__trig_pin,OUTPUT);
-  pinMode(__echo_pin,INPUT);
-
   set_matrix_rgb(0,0,0);
+  setup_timer2_ovf();
   setup_timer1_ovf();
   matrix_test(10);
+
+  pinMode(__pir_pin,INPUT);
+
+  pinMode(__trig_pin, OUTPUT);
+  pinMode(__echo_pin, INPUT);
 }
 
 ISR(TIMER1_OVF_vect) {
@@ -226,28 +230,34 @@ ISR(TIMER1_OVF_vect) {
       digitalWrite(__spi_latch,HIGH);
     }
   }
-
-  digitalWrite(__trig_pin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(__trig_pin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(__trig_pin, LOW);
-  distance_cm = pulseIn(__echo_pin,HIGH,12000) /29 / 2; // 12ms = 200cm timeout
 }
 
+//Timer2 Overflow Interrupt Vector, called every 1ms
+ISR(TIMER2_OVF_vect) {
+  count++;               //Increments the interrupt counter
+  if(count > 999){
+    toggle = !toggle;    //toggles the LED state
+    count = 0;           //Resets the interrupt counter
+  }
+  digitalWrite(13,toggle);
+  TCNT2 = 130;           //Reset Timer to 130 out of 255
+  TIFR2 = 0x00;          //Timer2 INT Flag Reg: Clear Timer Overflow Flag
+};
+
 void loop() 
-{
+{  
   if(digitalRead(__pir_pin) == LOW)
     eyeOffset = BORED_EYE;
   else
     eyeOffset = NICE_EYE;
 
+  distance = measurement();
   #ifdef DEBUG
-    printf_P(PSTR("cm: %d\n\r"), distance_cm);
+    printf_P(PSTR("cm: %d\n\r"), distance);
   #endif
-  if(distance_cm <= 50) {
+  /*if(distance <= 50) {
     eyeOffset = EVIL_EYE;
-  }
+  }*/
 
   const uint8_t* eye = 
             &blinkImg[
@@ -319,6 +329,18 @@ byte bit_reverse( byte x ) {
   return x;    
 }
 
+void setup_timer2_ovf() {
+  pinMode(13,OUTPUT);
+
+  //Setup Timer2 to fire every 1ms
+  TCCR2B = 0x00;        //Disbale Timer2 while we set it up
+  TCNT2  = 130;         //Reset Timer Count to 130 out of 255
+  TIFR2  = 0x00;        //Timer2 INT Flag Reg: Clear Timer Overflow Flag
+  TIMSK2 = 0x01;        //Timer2 INT Reg: Timer2 Overflow Interrupt Enable
+  TCCR2A = 0x00;        //Timer2 Control Reg A: Normal port operation, Wave Gen Mode normal
+  TCCR2B = 0x05;        //Timer2 Control Reg B: Timer Prescaler set to 128
+}
+
 void setup_timer1_ovf() {
   // Arduino runs at 16 Mhz...
   // Timer1 (16bit) Settings:
@@ -342,6 +364,18 @@ void setup_timer1_ovf() {
   TCNT1 = __TIMER1_MAX - __TIMER1_CNT;
   // enable all interrupts
   sei(); 
+}
+
+float measurement() {  
+  float distance;   
+  digitalWrite(__trig_pin,LOW);   
+  delayMicroseconds(2);   
+  digitalWrite(__trig_pin,HIGH);   
+  delayMicroseconds(10);   
+  digitalWrite(__trig_pin,LOW);   
+  distance = pulseIn(__echo_pin,HIGH,30000);            
+  distance = distance / 58;     
+  return distance; 
 }
 
 void set_led_red(byte row, byte led, byte red) {
