@@ -34,9 +34,14 @@ uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
 uint8_t newX = 3, newY = 3;   // Next pupil position
 int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
 
-float distance;
-unsigned int toggle = 0;  //used to keep the state of the LED
-unsigned int count = 0;   //used to keep count of how many interrupts were fired
+extern volatile unsigned long timer0_overflow_count;
+unsigned long hpticks ()
+{
+    return (timer0_overflow_count << 8) + TCNT0;
+}
+unsigned long last_micros;
+float distance = 0;
+bool wait = false;
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -184,7 +189,6 @@ void setup() {
   delay(10);
 
   set_matrix_rgb(0,0,0);
-  setup_timer2_ovf();
   setup_timer1_ovf();
   matrix_test(10);
 
@@ -230,19 +234,24 @@ ISR(TIMER1_OVF_vect) {
       digitalWrite(__spi_latch,HIGH);
     }
   }
-}
 
-//Timer2 Overflow Interrupt Vector, called every 1ms
-ISR(TIMER2_OVF_vect) {
-  count++;               //Increments the interrupt counter
-  if(count > 999){
-    toggle = !toggle;    //toggles the LED state
-    count = 0;           //Resets the interrupt counter
+  // measure distance from ultrasonic
+  if(wait == false) {
+    digitalWrite(__trig_pin,LOW);   
+    last_micros = hpticks()*4;
+    if(last_micros+2 < hpticks()*4) { // 2 microsec delay
+      digitalWrite(__trig_pin,HIGH);      
+      wait = true;
+      last_micros = hpticks()*4;
+    }
   }
-  digitalWrite(13,toggle);
-  TCNT2 = 130;           //Reset Timer to 130 out of 255
-  TIFR2 = 0x00;          //Timer2 INT Flag Reg: Clear Timer Overflow Flag
-};
+  if(wait && last_micros+10 < hpticks()*4) { // 10 microsec delay
+    digitalWrite(__trig_pin,LOW);   
+    distance = pulseIn(__echo_pin,HIGH,30000);         
+    distance = distance / 58;
+    wait = false;
+  }
+}
 
 void loop() 
 {  
@@ -251,7 +260,6 @@ void loop()
   else
     eyeOffset = NICE_EYE;
 
-  distance = measurement();
   #ifdef DEBUG
     printf_P(PSTR("cm: %d\n\r"), distance);
   #endif
@@ -309,11 +317,14 @@ void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
       }
       
       if(eyeOffset == EVIL_EYE) {
-        set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
+        //set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
+        set_row_byte_hue(ctr1,image,360);
       } else if(eyeOffset == NICE_EYE) {
-        set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
+        //set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
+        set_row_byte_hue(ctr1,image,60);
       } else {
-        set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
+        //set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
+        set_row_byte_hue(ctr1,image,250);
       }
   }
   #ifdef DEBUG
@@ -327,18 +338,6 @@ byte bit_reverse( byte x ) {
   x = ((x >> 2) & 0x33) | ((x << 2) & 0xcc); 
   x = ((x >> 4) & 0x0f) | ((x << 4) & 0xf0); 
   return x;    
-}
-
-void setup_timer2_ovf() {
-  pinMode(13,OUTPUT);
-
-  //Setup Timer2 to fire every 1ms
-  TCCR2B = 0x00;        //Disbale Timer2 while we set it up
-  TCNT2  = 130;         //Reset Timer Count to 130 out of 255
-  TIFR2  = 0x00;        //Timer2 INT Flag Reg: Clear Timer Overflow Flag
-  TIMSK2 = 0x01;        //Timer2 INT Reg: Timer2 Overflow Interrupt Enable
-  TCCR2A = 0x00;        //Timer2 Control Reg A: Normal port operation, Wave Gen Mode normal
-  TCCR2B = 0x05;        //Timer2 Control Reg B: Timer Prescaler set to 128
 }
 
 void setup_timer1_ovf() {
@@ -364,18 +363,6 @@ void setup_timer1_ovf() {
   TCNT1 = __TIMER1_MAX - __TIMER1_CNT;
   // enable all interrupts
   sei(); 
-}
-
-float measurement() {  
-  float distance;   
-  digitalWrite(__trig_pin,LOW);   
-  delayMicroseconds(2);   
-  digitalWrite(__trig_pin,HIGH);   
-  delayMicroseconds(10);   
-  digitalWrite(__trig_pin,LOW);   
-  distance = pulseIn(__echo_pin,HIGH,30000);            
-  distance = distance / 58;     
-  return distance; 
 }
 
 void set_led_red(byte row, byte led, byte red) {
@@ -470,20 +457,81 @@ void set_matrix_rgb(byte red, byte green, byte blue) {
   }
 }
 
+void set_led_hue(byte row, byte led, int hue) {
+  // see wikipeda: HSV
+  float S=100.0,V=100.0,s=S/100.0,v=V/100.0,h_i,f,p,q,t,R,G,B;
+    
+    hue = hue%360;
+    h_i = hue/60;            
+    f = (float)(hue)/60.0 - h_i;
+    p = v*(1-s);
+    q = v*(1-s*f);
+    t = v*(1-s*(1-f));
+    
+    if      ( h_i == 0 ) { 
+      R = v; 
+      G = t; 
+      B = p;
+    }
+    else if ( h_i == 1 ) { 
+      R = q; 
+      G = v; 
+      B = p;
+    }
+    else if ( h_i == 2 ) { 
+      R = p; 
+      G = v; 
+      B = t;
+    }
+    else if ( h_i == 3 ) { 
+      R = p; 
+      G = q; 
+      B = v;
+    }
+    else if ( h_i == 4 ) { 
+      R = t; 
+      G = p; 
+      B = v;
+    }
+    else                   { 
+      R = v; 
+      G = p; 
+      B = q;
+    }
+
+    set_led_rgb(row,led,byte(R*(float)(__max_brightness)),byte(G*(float)(__max_brightness)),byte(B*(float)(__max_brightness)));   
+}
+
+void set_row_byte_hue(byte row, byte data_byte, int hue) {
+  byte led;
+  for(led = 0; led <= __max_led; led++) {
+    if( (data_byte>>led)&(B00000001) ) {
+      set_led_hue(row,led,hue);
+    }
+    else {
+      set_led_rgb(row,led,0,0,0);
+    }
+  }
+}
+
 void matrix_test(int speed) {
+  set_row_byte_rgb(0,1,__max_brightness,__max_brightness,__max_brightness);
+  delay(speed*10);
+  set_matrix_rgb(0,0,0);
+
   byte ctr1;
   byte ctr2;
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(ctr1,0,0);
-    delay(speed/10);
+    delay(speed/5);
   }
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,ctr1,0);
-    delay(speed/10);
+    delay(speed/5);
   }
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,0,ctr1);
-    delay(speed/10);
+    delay(speed/5);
   }
   set_matrix_rgb(0,0,0);
   
@@ -506,7 +554,12 @@ void matrix_test(int speed) {
     delay(speed);
     set_matrix_rgb(0,0,0);
   }
-  set_row_byte_rgb(0,1,__max_brightness,__max_brightness,__max_brightness);
-  delay(speed*50);
+
+  set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
+  delay(speed*25);
+  set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
+  delay(speed*25);
+  set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
+  delay(speed*25);
   set_matrix_rgb(0,0,0);
 }
