@@ -10,16 +10,15 @@
 #define __TIMER1_MAX 0xFFFF // 16 bit CTR
 #define __TIMER1_CNT 0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
 
-#define __rows 8
-#define __max_row __rows-1
-#define __leds_per_row 8
-#define __max_led __leds_per_row-1
-#define __brightness_levels 30 //50 for rgb only
-#define __max_brightness __brightness_levels-1
+#define __matrix_count 2
+#define __matrix_row 8-1
+#define __max_row __matrix_count*__matrix_row
+#define __max_led 8-1
+#define __max_brightness 30
 
-byte brightness_red[__leds_per_row][__rows]; 
-byte brightness_green[__leds_per_row][__rows];
-byte brightness_blue[__leds_per_row][__rows];
+byte brightness_red[__max_led+1][__max_row+1]; 
+byte brightness_green[__max_led+1][__max_row+1];
+byte brightness_blue[__max_led+1][__max_row+1];
 
 #define NICE_EYE 0
 #define EVIL_EYE 40 // 5*8
@@ -230,14 +229,12 @@ ISR(TIMER1_OVF_vect) {
       }
 
       digitalWrite(__spi_latch,LOW);
-      SPI.transfer(B00000001<<row);
-      SPI.transfer(blue);
-      SPI.transfer(green);
-      SPI.transfer(red);
-      SPI.transfer(B00000001<<row);
-      SPI.transfer(bit_reverse(blue));
-      SPI.transfer(bit_reverse(green));
-      SPI.transfer(bit_reverse(red));
+      for(int matrix = 1; matrix <= __matrix_count; matrix++) {
+        SPI.transfer(B00000001<<(row*matrix)); 
+        SPI.transfer(blue);
+        SPI.transfer(green);
+        SPI.transfer(red);
+      }
       digitalWrite(__spi_latch,HIGH);
     }
   }
@@ -317,27 +314,37 @@ void loop()
 
 void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
   for(byte ctr1 = 0; ctr1 <= __max_row; ctr1++) {
-      byte image = bit_reverse(pgm_read_byte_near(eye+ctr1));
-      
-      if(ctr1==pupilY || ctr1==pupilY+1) {
-        image = image-(3<<pupilX);
-      }
-      
-      if(eyeOffset == EVIL_EYE) {
-        set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
-        //set_row_byte_hue(ctr1,image,300);
-      } else if(eyeOffset == NICE_EYE) {
-        set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
-        //set_row_byte_hue(ctr1,image,100);
-      } else {
-        set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
-        //set_row_byte_hue(ctr1,image,240);
-      }
+    int shift = __max_row/__matrix_count;
+    byte image;
+    if(ctr1 > shift) {
+      // right eye
+      image = pgm_read_byte_near(eye+ (ctr1-shift));
+      pupilY =+ shift;
+    } else {
+      // left eye
+      image = bit_reverse(pgm_read_byte_near(eye+ctr1));
+    }
+
+    // insert pupil
+    if(ctr1==pupilY || ctr1==pupilY+1) {
+      image = image-(3<<pupilX);
+    }
+    
+    if(eyeOffset == EVIL_EYE) {
+      //set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
+      set_row_byte_hue(ctr1,image,300);
+    } else if(eyeOffset == NICE_EYE) {
+      //set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
+      set_row_byte_hue(ctr1,image,100);
+    } else {
+      //set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
+      set_row_byte_hue(ctr1,image,(int)(random(360)));
+    }
   }
   #ifdef DEBUG
     //printf_P(PSTR("pupil: x=%d, y=%d\n\r"), pupilX, pupilY);
   #endif
-  delay(5);
+  //delay(5);
 }
 
 byte bit_reverse( byte x ) { 
@@ -523,24 +530,24 @@ void set_row_byte_hue(byte row, byte data_byte, int hue) {
 
 void matrix_test(int speed) {
   set_row_byte_rgb(0,1,__max_brightness,__max_brightness,__max_brightness);
-  delay(speed*10);
+  delay(speed*5);
   set_matrix_rgb(0,0,0);
 
   byte ctr1;
   byte ctr2;
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(ctr1,0,0);
-    delay(speed/3);
+    delay(speed/4);
   }
   delay(speed);
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,ctr1,0);
-    delay(speed/3);
+    delay(speed/4);
   }
   delay(speed);
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,0,ctr1);
-    delay(speed/3);
+    delay(speed/4);
   }
   delay(speed);
   set_matrix_rgb(0,0,0);
@@ -566,8 +573,8 @@ void matrix_test(int speed) {
   }
   
   for(ctr1 = 0; ctr1 < speed*10; ctr1++) { 
-    set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
+    set_led_hue((byte)(random(__max_row+1)),(byte)(random(__max_led+1)),(int)(random(360)));
   }
-  delay(speed*2);
+  delay(speed*10);
   set_matrix_rgb(0,0,0);
 }
