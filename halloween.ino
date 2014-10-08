@@ -234,6 +234,10 @@ ISR(TIMER1_OVF_vect) {
       SPI.transfer(blue);
       SPI.transfer(green);
       SPI.transfer(red);
+      SPI.transfer(B00000001<<row);
+      SPI.transfer(bit_reverse(blue));
+      SPI.transfer(bit_reverse(green));
+      SPI.transfer(bit_reverse(red));
       digitalWrite(__spi_latch,HIGH);
     }
   }
