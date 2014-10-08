@@ -40,7 +40,6 @@ unsigned long hpticks ()
 }
 unsigned long last_micros = hpticks()*4;
 unsigned long distance = 500;
-bool wait = false;
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -239,26 +238,15 @@ ISR(TIMER1_OVF_vect) {
     }
   }
 
-  // measure distance from ultrasonic
-  if(last_micros+100000 < hpticks() && wait == false) {
-    digitalWrite(__trig_pin,LOW);   
-    last_micros = hpticks();
-    if(last_micros < hpticks()) { // 2 microsec delay
-      digitalWrite(__trig_pin,HIGH);      
-      wait = true;
-      last_micros = hpticks();
-    }
-  }
-  if(wait && last_micros+3 < hpticks()) { // 10 microsec delay
-    digitalWrite(__trig_pin,LOW);   
-    distance = pulseIn(__echo_pin,HIGH,15000);         
-    distance = distance / 58;
-    wait = false;
-  }
+  //measurement();
 }
 
 void loop() 
 {  
+  noInterrupts();
+  // safety check
+  measurement();
+  interrupts();
   #ifdef DEBUG
     printf_P(PSTR("cm: %d\n\r"), distance);
   #endif
@@ -577,4 +565,17 @@ void matrix_test(int speed) {
   }
   delay(speed*10);
   set_matrix_rgb(0,0,0);
+}
+
+void measurement()
+{
+  digitalWrite(__trig_pin,LOW);   
+  last_micros = hpticks();
+  while(last_micros == hpticks()) {}; // 2 microsec delay
+  digitalWrite(__trig_pin,HIGH);      
+  last_micros = hpticks();
+  while(last_micros+3 < hpticks()) {}; // 10 microsec delay
+  digitalWrite(__trig_pin,LOW);   
+  distance = pulseIn(__echo_pin,HIGH,15000);       
+  distance = distance / 58;
 }
