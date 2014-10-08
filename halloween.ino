@@ -14,7 +14,7 @@
 #define __max_row __rows-1
 #define __leds_per_row 8
 #define __max_led __leds_per_row-1
-#define __brightness_levels 50
+#define __brightness_levels 30 //50 for rgb only
 #define __max_brightness __brightness_levels-1
 
 byte brightness_red[__leds_per_row][__rows]; 
@@ -39,8 +39,8 @@ unsigned long hpticks ()
 {
     return (timer0_overflow_count << 8) + TCNT0;
 }
-unsigned long last_micros;
-float distance = 0;
+unsigned long last_micros = hpticks()*4;
+unsigned long distance = 500;
 bool wait = false;
 
 static const uint8_t PROGMEM
@@ -190,7 +190,7 @@ void setup() {
 
   set_matrix_rgb(0,0,0);
   setup_timer1_ovf();
-  matrix_test(10);
+  matrix_test(25);
 
   pinMode(__pir_pin,INPUT);
 
@@ -214,7 +214,10 @@ ISR(TIMER1_OVF_vect) {
       green = B11111111;  // off
       blue = B11111111;   // off
       
-      for(led = 0; led <= __max_led; led++) {
+      for(led = 0; led <= __max_led; led++) {   
+        if(row == __max_row && cycle >= __max_brightness-1)
+          break;
+        
         if(cycle < brightness_red[row][led]) {
           red &= ~(1<<led);
         }
@@ -236,18 +239,18 @@ ISR(TIMER1_OVF_vect) {
   }
 
   // measure distance from ultrasonic
-  if(wait == false) {
+  if(last_micros+100000 < hpticks() && wait == false) {
     digitalWrite(__trig_pin,LOW);   
-    last_micros = hpticks()*4;
-    if(last_micros+2 < hpticks()*4) { // 2 microsec delay
+    last_micros = hpticks();
+    if(last_micros < hpticks()) { // 2 microsec delay
       digitalWrite(__trig_pin,HIGH);      
       wait = true;
-      last_micros = hpticks()*4;
+      last_micros = hpticks();
     }
   }
-  if(wait && last_micros+10 < hpticks()*4) { // 10 microsec delay
+  if(wait && last_micros+3 < hpticks()) { // 10 microsec delay
     digitalWrite(__trig_pin,LOW);   
-    distance = pulseIn(__echo_pin,HIGH,30000);         
+    distance = pulseIn(__echo_pin,HIGH,15000);         
     distance = distance / 58;
     wait = false;
   }
@@ -255,17 +258,14 @@ ISR(TIMER1_OVF_vect) {
 
 void loop() 
 {  
+  #ifdef DEBUG
+    printf_P(PSTR("cm: %d\n\r"), distance);
+  #endif
+  
   if(digitalRead(__pir_pin) == LOW)
     eyeOffset = BORED_EYE;
   else
     eyeOffset = NICE_EYE;
-
-  #ifdef DEBUG
-    printf_P(PSTR("cm: %d\n\r"), distance);
-  #endif
-  /*if(distance <= 50) {
-    eyeOffset = EVIL_EYE;
-  }*/
 
   const uint8_t* eye = 
             &blinkImg[
@@ -287,6 +287,9 @@ void loop()
     if(gazeCountdown == 0) {    // Last frame?
       pupilX = newX; pupilY = newY;
       
+      if(distance < 100 && distance != 0) {
+        eyeOffset = EVIL_EYE;
+      }  
       // Pick random positions
       if(eyeOffset == NICE_EYE) {
         newX = random(1,6); newY = random(2,5);
@@ -317,14 +320,14 @@ void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
       }
       
       if(eyeOffset == EVIL_EYE) {
-        //set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
-        set_row_byte_hue(ctr1,image,360);
+        set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
+        //set_row_byte_hue(ctr1,image,300);
       } else if(eyeOffset == NICE_EYE) {
-        //set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
-        set_row_byte_hue(ctr1,image,60);
+        set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
+        //set_row_byte_hue(ctr1,image,100);
       } else {
-        //set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
-        set_row_byte_hue(ctr1,image,250);
+        set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
+        //set_row_byte_hue(ctr1,image,240);
       }
   }
   #ifdef DEBUG
@@ -523,16 +526,19 @@ void matrix_test(int speed) {
   byte ctr2;
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(ctr1,0,0);
-    delay(speed/5);
+    delay(speed/3);
   }
+  delay(speed);
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,ctr1,0);
-    delay(speed/5);
+    delay(speed/3);
   }
+  delay(speed);
   for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
     set_matrix_rgb(0,0,ctr1);
-    delay(speed/5);
+    delay(speed/3);
   }
+  delay(speed);
   set_matrix_rgb(0,0,0);
   
   for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
@@ -554,12 +560,10 @@ void matrix_test(int speed) {
     delay(speed);
     set_matrix_rgb(0,0,0);
   }
-
-  set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
-  delay(speed*25);
-  set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
-  delay(speed*25);
-  set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
-  delay(speed*25);
+  
+  for(ctr1 = 0; ctr1 < speed*10; ctr1++) { 
+    set_led_hue((byte)(random(__rows)),(byte)(random(__leds_per_row)),(int)(random(360)));
+  }
+  delay(speed*2);
   set_matrix_rgb(0,0,0);
 }
