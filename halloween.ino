@@ -13,7 +13,7 @@
 #define MATRIX_COUNT  2
 #define MATRIX_ROWS  8
 #define ROW_LEDS  8
-#define MATRIX_BRIGHTNESS  24
+#define MATRIX_BRIGHTNESS  21
 
 byte RED_MATRIX[MATRIX_COUNT][ROW_LEDS][MATRIX_ROWS]; 
 byte GREEN_MATRIX[MATRIX_COUNT][ROW_LEDS][MATRIX_ROWS];
@@ -104,7 +104,7 @@ blinkImg[][8] = {    // Eye animation frames
         B00000000,
         B00000000,
         B00000000,
-        B01111111,
+        B00111111,
         B00000000,
         B00000000,
         B00000000 },
@@ -291,7 +291,7 @@ void loop()
 
   blinkCountdown--;
   if (blinkCountdown == 0) { 
-    blinkCountdown = random(5, 180);
+    blinkCountdown = random(5, 150);
     
     sonar = measurement();
     #ifdef DEBUG
@@ -319,7 +319,7 @@ void loop()
         newX = random(1,6); newY = random(2,5);
       }
       else if(eyeOffset == EVIL_EYE) {
-        newX = random(2,6); newY = 4;
+        newX = random(2,5); newY = 4;
       }
         
       dX            = newX - pupilX;           // Horizontal distance to move
@@ -511,20 +511,19 @@ void matrix_test(int speed) {
 }
 
 void drawEyes(const uint8_t* eyePoint, uint8_t pupilX, uint8_t pupilY) {
-  for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
-    for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+  
+  for(byte row = 0; row < MATRIX_ROWS; row++) {
+      for(byte matrix = 0; matrix < MATRIX_COUNT; matrix++) {
       
-      byte eye;
-      if(matrix != 0) {
-        // right eye
-        eye = pgm_read_byte_near(eyePoint+row);
-      } else {
+      // right eye
+      byte eye = pgm_read_byte_near(eyePoint+row);
+      if(matrix == 0) {
         // left eye
-        eye = bit_reverse(pgm_read_byte_near(eyePoint+row));
+        eye = bit_reverse(eye);
       }
 
       // insert pupil
-      if(row==pupilY || row==pupilY+1) {
+      if(row==pupilY || row==pupilY+1)  {
         eye = eye-(3<<pupilX);
       }
 
@@ -533,7 +532,7 @@ void drawEyes(const uint8_t* eyePoint, uint8_t pupilX, uint8_t pupilY) {
       } else if(eyeOffset == NICE_EYE) {
         set_row_hue(matrix,row,eye,120);
       } else {
-        set_row_hue(matrix,row,eye,200);//(int)(random(360)));
+        set_row_hue(matrix,row,eye,200);
       }
     }
   }
@@ -558,7 +557,7 @@ unsigned long measurement() {
   digitalWrite(TRIG_PIN,HIGH);
   delayMicroseconds(10);      
   digitalWrite(TRIG_PIN,LOW);   
-  cm = pulseIn(ECHO_PIN,HIGH,10000);
+  cm = pulseIn(ECHO_PIN,HIGH,12000);
   interrupts();
   if(cm == 0)
     return 200;    
