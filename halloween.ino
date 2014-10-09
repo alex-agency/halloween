@@ -10,7 +10,7 @@
 #define __TIMER1_MAX 0xFFFF // 16 bit CTR
 #define __TIMER1_CNT 0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
 
-#define __matrix_count 2
+#define __matrix_count 1//2
 #define __matrix_row 8-1
 #define __max_row __matrix_count*__matrix_row
 #define __max_led 8-1
@@ -33,13 +33,7 @@ uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
 uint8_t newX = 3, newY = 3;   // Next pupil position
 int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
 
-extern volatile unsigned long timer0_overflow_count;
-unsigned long hpticks ()
-{
-    return (timer0_overflow_count << 8) + TCNT0;
-}
-unsigned long last_micros = hpticks()*4;
-unsigned long distance = 500;
+unsigned long distance = 200;
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -228,44 +222,56 @@ ISR(TIMER1_OVF_vect) {
       }
 
       digitalWrite(__spi_latch,LOW);
-      for(int matrix = 1; matrix <= __matrix_count; matrix++) {
-        SPI.transfer(B00000001<<(row*matrix)); 
+      /*if(row>__matrix_row) {
+        SPI.transfer(B00000001<<row); 
+        SPI.transfer(B11111111);
+        SPI.transfer(B11111111);
+        SPI.transfer(B11111111);
+        SPI.transfer(B00000001<<row); 
+        SPI.transfer(blue);
+        SPI.transfer(green);
+        SPI.transfer(red);   
+      } else {*/
+        SPI.transfer(B00000001<<row); 
         SPI.transfer(blue);
         SPI.transfer(green);
         SPI.transfer(red);
-      }
+      //}
       digitalWrite(__spi_latch,HIGH);
     }
   }
-
-  //measurement();
 }
 
 void loop() 
 {  
-  noInterrupts();
-  // safety check
-  measurement();
-  interrupts();
-  #ifdef DEBUG
-    printf_P(PSTR("cm: %d\n\r"), distance);
-  #endif
-  
-  if(digitalRead(__pir_pin) == LOW)
+  if(distance < 100) {
+    eyeOffset = EVIL_EYE;
+    if(pupilY != 4) {
+      newY = 4; pupilY = 4;
+      newX = 3; pupilX = 3;
+    }
+  } else if(digitalRead(__pir_pin) == LOW) {
     eyeOffset = BORED_EYE;
-  else
+  } else {
     eyeOffset = NICE_EYE;
+  }
 
+  blinkCountdown--;
+  if (blinkCountdown == 0) { 
+    blinkCountdown = random(5, 180);
+    
+    distance = measurement();
+    #ifdef DEBUG
+      //printf_P(PSTR("cm: %d\n\r"), distance);
+    #endif
+  }
+  
   const uint8_t* eye = 
             &blinkImg[
             (blinkCountdown < sizeof(blinkIndex)) ? // Currently blinking?
             blinkIndex[blinkCountdown] :            // Yes, look up bitmap #
             0                                       // No, show bitmap 0
             ][0] + eyeOffset;
-  
-  blinkCountdown--;
-    if (blinkCountdown == 0) 
-        blinkCountdown = random(5, 180);
 
   if(--gazeCountdown <= gazeFrames && eyeOffset != BORED_EYE) {
     // pupil in motion - draw pupil at interim position
@@ -274,11 +280,7 @@ void loop()
       newY - (dY * gazeCountdown / gazeFrames));
     
     if(gazeCountdown == 0) {    // Last frame?
-      pupilX = newX; pupilY = newY;
-      
-      if(distance < 100 && distance != 0) {
-        eyeOffset = EVIL_EYE;
-      }  
+      pupilX = newX; pupilY = newY; 
       // Pick random positions
       if(eyeOffset == NICE_EYE) {
         newX = random(1,6); newY = random(2,5);
@@ -326,13 +328,13 @@ void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
       set_row_byte_hue(ctr1,image,100);
     } else {
       //set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
-      set_row_byte_hue(ctr1,image,(int)(random(360)));
+      set_row_byte_hue(ctr1,image,220);//(int)(random(360)));
     }
   }
   #ifdef DEBUG
     //printf_P(PSTR("pupil: x=%d, y=%d\n\r"), pupilX, pupilY);
   #endif
-  //delay(5);
+  delay(10);
 }
 
 byte bit_reverse( byte x ) { 
@@ -567,15 +569,18 @@ void matrix_test(int speed) {
   set_matrix_rgb(0,0,0);
 }
 
-void measurement()
+unsigned long measurement()
 {
+  unsigned long cm;
+  noInterrupts();
+  digitalWrite(__trig_pin,LOW);
+  delayMicroseconds(2);  
+  digitalWrite(__trig_pin,HIGH);
+  delayMicroseconds(10);      
   digitalWrite(__trig_pin,LOW);   
-  last_micros = hpticks();
-  while(last_micros == hpticks()) {}; // 2 microsec delay
-  digitalWrite(__trig_pin,HIGH);      
-  last_micros = hpticks();
-  while(last_micros+3 < hpticks()) {}; // 10 microsec delay
-  digitalWrite(__trig_pin,LOW);   
-  distance = pulseIn(__echo_pin,HIGH,15000);       
-  distance = distance / 58;
+  cm = pulseIn(__echo_pin,HIGH,10000);
+  interrupts();
+  if(cm == 0)
+    return 200;    
+  return cm / 58;
 }
