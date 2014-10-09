@@ -2,38 +2,26 @@
 
 #define DEBUG
 
-#define __spi_latch 9
-#define __pir_pin 7
-#define __trig_pin 6
-#define __echo_pin 5
+#define SPI_LATCH_PIN  9
+#define PIR_PIN  7
+#define TRIG_PIN  6
+#define ECHO_PIN  5
 
-#define __TIMER1_MAX 0xFFFF // 16 bit CTR
-#define __TIMER1_CNT 0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
+#define TIMER1_MAX  0xFFFF // 16 bit CTR
+#define TIMER1_CNT  0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
 
-#define __matrix_count 1//2
-#define __matrix_row 8-1
-#define __max_row __matrix_count*__matrix_row
-#define __max_led 8-1
-#define __max_brightness 30
+#define MATRIX_COUNT 2
+#define MATRIX_ROWS  8
+#define ROW_LEDS  8
+#define MATRIX_BRIGHTNESS  30
 
-byte brightness_red[__max_led+1][__max_row+1]; 
-byte brightness_green[__max_led+1][__max_row+1];
-byte brightness_blue[__max_led+1][__max_row+1];
+byte RED_MATRIX[MATRIX_COUNT][ROW_LEDS][MATRIX_ROWS]; 
+byte GREEN_MATRIX[MATRIX_COUNT][ROW_LEDS][MATRIX_ROWS];
+byte BLUE_MATRIX[MATRIX_COUNT][ROW_LEDS][MATRIX_ROWS];
 
-#define NICE_EYE 0
-#define EVIL_EYE 40 // 5*8
-#define BORED_EYE 80 // 10*8
-
-uint8_t blinkIndex[] = { 1, 2, 3, 4, 3, 2, 1 }; // Blink bitmap sequence
-uint8_t blinkCountdown = 100; // Countdown to next blink (in frames)
-uint8_t gazeCountdown  =  50; // Countdown to next eye movement
-uint8_t gazeFrames     =  20; // Duration of eye movement (smaller = faster)
-uint8_t eyeOffset = BORED_EYE;
-uint8_t pupilX = 3, pupilY = 3;   // Current pupil position
-uint8_t newX = 3, newY = 3;   // Next pupil position
-int8_t dX   = 0, dY   = 0;   // Distance from prior to new position
-
-unsigned long distance = 200;
+#define NICE_EYE  0
+#define EVIL_EYE  40 // 5*8
+#define BORED_EYE  80 // 10*8
 
 static const uint8_t PROGMEM
 blinkImg[][8] = {    // Eye animation frames
@@ -163,7 +151,17 @@ blinkImg[][8] = {    // Eye animation frames
         B00000000 }
 };
 
-// Declare output
+uint8_t blinkIndex[] = { 1, 2, 3, 4, 3, 2, 1 }; // Blink bitmap sequence
+uint8_t blinkCountdown = 100; // Countdown to next blink (in frames)
+uint8_t gazeCountdown  =  50; // Countdown to next eye movement
+uint8_t gazeFrames     =  20; // Duration of eye movement (smaller = faster)
+uint8_t eyeOffset = BORED_EYE;
+uint8_t pupilX = 3, pupilY = 3; // Current pupil position
+uint8_t newX = 3, newY = 3; // Next pupil position
+int8_t  dX   = 0, dY   = 0; // Distance from prior to new position
+unsigned long sonar = 200; // Distance to sonar in cm
+
+// Declare serial output
 static int serial_putchar(char c, FILE *) {
   Serial.write(c);
   return 0;
@@ -171,86 +169,102 @@ static int serial_putchar(char c, FILE *) {
 FILE serial_out = {0};
 
 void setup() {
-  // Configure output
+  // Configure serial output
   Serial.begin(9600);
   fdev_setup_stream(&serial_out, serial_putchar, NULL, _FDEV_SETUP_WRITE);
   stdout = stderr = &serial_out;
   // Initialize SPI
   SPI.begin();
-  pinMode(__spi_latch,OUTPUT);
+  pinMode(SPI_LATCH_PIN,OUTPUT);
   delay(10);
-
-  set_matrix_rgb(0,0,0);
+  matrix_clear(); 
+  // Initialize timer1
   setup_timer1_ovf();
   matrix_test(25);
+  // Initialize PIR sensor
+  pinMode(PIR_PIN,INPUT);
+  // Initialize sonar
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+}
 
-  pinMode(__pir_pin,INPUT);
-
-  pinMode(__trig_pin, OUTPUT);
-  pinMode(__echo_pin, INPUT);
+void setup_timer1_ovf() {
+  // Arduino runs at 16 Mhz...
+  // Timer1 (16bit) Settings:
+  // prescaler (frequency divider) values:   CS12    CS11   CS10
+  //                                           0       0      0    stopped
+  //                                           0       0      1      /1  
+  //                                           0       1      0      /8  
+  //                                           0       1      1      /64
+  //                                           1       0      0      /256 
+  //                                           1       0      1      /1024
+  //                                           1       1      0      external clock on T1 pin, falling edge
+  //                                           1       1      1      external clock on T1 pin, rising edge
+  //
+  TCCR1B &= ~ ( (1<<CS11) );
+  TCCR1B |= ( (1<<CS12) | (1<<CS10) );      
+  // normal mode
+  TCCR1B &= ~ ( (1<<WGM13) | (1<<WGM12) );
+  TCCR1A &= ~ ( (1<<WGM11) | (1<<WGM10) );
+  // Timer1 Overflow Interrupt Enable  
+  TIMSK1 |= (1<<TOIE1);
+  TCNT1 = TIMER1_MAX - TIMER1_CNT;
+  // enable all interrupts
+  sei(); 
 }
 
 ISR(TIMER1_OVF_vect) {
-  TCNT1 = __TIMER1_MAX - __TIMER1_CNT;
-  byte cycle;
+  TCNT1 = TIMER1_MAX-TIMER1_CNT;
 
-  for(cycle = 0; cycle < __max_brightness; cycle++) {
-    byte led;
+  for(byte cycle = 0; cycle < MATRIX_BRIGHTNESS; cycle++) {
     byte row = B00000000;    // row: current source. on when (1)
+    byte led;
     byte red;    // current sinker when on (0)
     byte green;  // current sinker when on (0)
     byte blue;   // current sinker when on (0)
 
-    for(row = 0; row <= __max_row; row++) {
-      red = B11111111;    // off
-      green = B11111111;  // off
-      blue = B11111111;   // off
+    digitalWrite(SPI_LATCH_PIN,LOW);
+    for(int matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
       
-      for(led = 0; led <= __max_led; led++) {   
-        if(row == __max_row && cycle >= __max_brightness-1)
-          break;
+      for(row = 0; row <= MATRIX_ROWS-1; row++) {
+        red = B11111111;    // off
+        green = B11111111;  // off
+        blue = B11111111;   // off
         
-        if(cycle < brightness_red[row][led]) {
-          red &= ~(1<<led);
+        for(led = 0; led <= ROW_LEDS-1; led++) {   
+          if(row == MATRIX_ROWS-1 && cycle >= MATRIX_BRIGHTNESS-1)
+            break;
+          
+          if(cycle < RED_MATRIX[matrix][row][led]) {
+            red &= ~(1<<led);
+          }
+          if(cycle < GREEN_MATRIX[matrix][row][led]) {
+            green &= ~(1<<led);
+          }
+          if(cycle < BLUE_MATRIX[matrix][row][led]) {
+            blue &= ~(1<<led);
+          }
         }
-        if(cycle < brightness_green[row][led]) {
-          green &= ~(1<<led);
-        }
-        if(cycle < brightness_blue[row][led]) {
-          blue &= ~(1<<led);
-        }
-      }
 
-      digitalWrite(__spi_latch,LOW);
-      /*if(row>__matrix_row) {
-        SPI.transfer(B00000001<<row); 
-        SPI.transfer(B11111111);
-        SPI.transfer(B11111111);
-        SPI.transfer(B11111111);
-        SPI.transfer(B00000001<<row); 
+        SPI.transfer(B00000001<<row);  
         SPI.transfer(blue);
         SPI.transfer(green);
-        SPI.transfer(red);   
-      } else {*/
-        SPI.transfer(B00000001<<row); 
-        SPI.transfer(blue);
-        SPI.transfer(green);
-        SPI.transfer(red);
-      //}
-      digitalWrite(__spi_latch,HIGH);
+        SPI.transfer(red);       
+      }
     }
+    digitalWrite(SPI_LATCH_PIN,HIGH);
   }
 }
 
 void loop() 
 {  
-  if(distance < 100) {
+  if(sonar < 100) {
     eyeOffset = EVIL_EYE;
     if(pupilY != 4) {
       newY = 4; pupilY = 4;
       newX = 3; pupilX = 3;
     }
-  } else if(digitalRead(__pir_pin) == LOW) {
+  } else if(digitalRead(PIR_PIN) == LOW) {
     eyeOffset = BORED_EYE;
   } else {
     eyeOffset = NICE_EYE;
@@ -260,9 +274,9 @@ void loop()
   if (blinkCountdown == 0) { 
     blinkCountdown = random(5, 180);
     
-    distance = measurement();
+    sonar = measurement();
     #ifdef DEBUG
-      //printf_P(PSTR("cm: %d\n\r"), distance);
+      //printf_P(PSTR("cm: %d\n\r"), sonar);
     #endif
   }
   
@@ -302,166 +316,45 @@ void loop()
   }
 }
 
-void drawEyes(const uint8_t* eye, uint8_t pupilX, uint8_t pupilY) {
-  for(byte ctr1 = 0; ctr1 <= __max_row; ctr1++) {
-    int shift = __max_row/__matrix_count;
-    byte image;
-    if(ctr1 > shift) {
-      // right eye
-      image = pgm_read_byte_near(eye+ (ctr1-shift));
-      pupilY =+ shift;
-    } else {
-      // left eye
-      image = bit_reverse(pgm_read_byte_near(eye+ctr1));
-    }
-
-    // insert pupil
-    if(ctr1==pupilY || ctr1==pupilY+1) {
-      image = image-(3<<pupilX);
-    }
-    
-    if(eyeOffset == EVIL_EYE) {
-      //set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
-      set_row_byte_hue(ctr1,image,300);
-    } else if(eyeOffset == NICE_EYE) {
-      //set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
-      set_row_byte_hue(ctr1,image,100);
-    } else {
-      //set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
-      set_row_byte_hue(ctr1,image,220);//(int)(random(360)));
+void matrix_clear() {
+  for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+    for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+      for(byte led = 0; led <= ROW_LEDS-1; led++) {
+        set_led_rgb(matrix,row,led,0,0,0);
+      }
     }
   }
-  #ifdef DEBUG
-    //printf_P(PSTR("pupil: x=%d, y=%d\n\r"), pupilX, pupilY);
-  #endif
-  delay(10);
 }
 
-byte bit_reverse( byte x ) { 
-  x = ((x >> 1) & 0x55) | ((x << 1) & 0xaa); 
-  x = ((x >> 2) & 0x33) | ((x << 2) & 0xcc); 
-  x = ((x >> 4) & 0x0f) | ((x << 4) & 0xf0); 
-  return x;    
+void set_led_rgb(uint8_t matrix, byte row, byte led, byte red, byte green, byte blue) {
+  RED_MATRIX[matrix][row][led] = red;
+  GREEN_MATRIX[matrix][row][led] = green;
+  BLUE_MATRIX[matrix][row][led] = blue;
 }
 
-void setup_timer1_ovf() {
-  // Arduino runs at 16 Mhz...
-  // Timer1 (16bit) Settings:
-  // prescaler (frequency divider) values:   CS12    CS11   CS10
-  //                                           0       0      0    stopped
-  //                                           0       0      1      /1  
-  //                                           0       1      0      /8  
-  //                                           0       1      1      /64
-  //                                           1       0      0      /256 
-  //                                           1       0      1      /1024
-  //                                           1       1      0      external clock on T1 pin, falling edge
-  //                                           1       1      1      external clock on T1 pin, rising edge
-  //
-  TCCR1B &= ~ ( (1<<CS11) );
-  TCCR1B |= ( (1<<CS12) | (1<<CS10) );      
-  // normal mode
-  TCCR1B &= ~ ( (1<<WGM13) | (1<<WGM12) );
-  TCCR1A &= ~ ( (1<<WGM11) | (1<<WGM10) );
-  // Timer1 Overflow Interrupt Enable  
-  TIMSK1 |= (1<<TOIE1);
-  TCNT1 = __TIMER1_MAX - __TIMER1_CNT;
-  // enable all interrupts
-  sei(); 
-}
-
-void set_led_red(byte row, byte led, byte red) {
-  brightness_red[row][led] = red;
-}
-
-
-void set_led_green(byte row, byte led, byte green) {
-  brightness_green[row][led] = green;
-}
-
-
-void set_led_blue(byte row, byte led, byte blue) {
-  brightness_blue[row][led] = blue;
-}
-
-void set_led_rgb(byte row, byte led, byte red, byte green, byte blue) {
-  set_led_red(row,led,red);
-  set_led_green(row,led,green);
-  set_led_blue(row,led,blue);
-}
-
-void set_row_rgb(byte row, byte red, byte green, byte blue) {
-  byte ctr1;
-  for(ctr1 = 0; ctr1 <= __max_led; ctr1++) {
-      set_led_rgb(row,ctr1,red,green,blue);
-  }
-}
-
-void set_column_rgb(byte column, byte red, byte green, byte blue) {
-  byte ctr1;
-  for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
-      set_led_rgb(ctr1,column,red,green,blue);
-  }
-}
-
-void set_row_byte_rgb(byte row, byte data_byte, byte red, byte green, byte blue) {
-  byte led;
-  for(led = 0; led <= __max_led; led++) {
+void set_row_rgb(uint8_t matrix, byte row, byte data_byte, byte red, byte green, byte blue) {
+  for(byte led = 0; led <= ROW_LEDS-1; led++) {
     if( (data_byte>>led)&(B00000001) ) {
-      set_led_rgb(row,led,red,green,blue);
+      set_led_rgb(matrix,row,led,red,green,blue);
     }
     else {
-      set_led_rgb(row,led,0,0,0);
+      set_led_rgb(matrix,row,led,0,0,0);
     }
   }
 }
 
-void set_row_byte_red(byte row, byte data_byte, byte red) {
-  byte led;
-  for(led = 0; led <= __max_led; led++) {
+void set_row_hue(uint8_t matrix, byte row, byte data_byte, uint8_t hue) {
+  for(byte led = 0; led <= ROW_LEDS-1; led++) {
     if( (data_byte>>led)&(B00000001) ) {
-      set_led_red(row,led,red);
+      set_led_hue(matrix,row,led,hue);
     }
     else {
-      set_led_red(row,led,0);
+      set_led_rgb(matrix,row,led,0,0,0);
     }
   }
 }
 
-void set_row_byte_green(byte row, byte data_byte, byte green) {
-  byte led;
-  for(led = 0; led <= __max_led; led++) {
-    if( (data_byte>>led)&(B00000001) ) {
-      set_led_green(row,led,green);
-    }
-    else {
-      set_led_green(row,led,0);
-    }
-  }
-}
-
-void set_row_byte_blue(byte row, byte data_byte, byte blue) {
-  byte led;
-  for(led = 0; led <= __max_led; led++) {
-    if( (data_byte>>led)&(B00000001) ) {
-      set_led_blue(row,led,blue);
-    }
-    else {
-      set_led_blue(row,led,0);
-    }
-  }
-}
-
-void set_matrix_rgb(byte red, byte green, byte blue) {
-  byte ctr1;
-  byte ctr2;
-  for(ctr2 = 0; ctr2 <= __max_row; ctr2++) {
-    for(ctr1 = 0; ctr1 <= __max_led; ctr1++) {
-      set_led_rgb(ctr2,ctr1,red,green,blue);
-    }
-  }
-}
-
-void set_led_hue(byte row, byte led, int hue) {
+void set_led_hue(uint8_t matrix, byte row, byte led, uint8_t hue) {
   // see wikipeda: HSV
   float S=100.0,V=100.0,s=S/100.0,v=V/100.0,h_i,f,p,q,t,R,G,B;
     
@@ -503,82 +396,142 @@ void set_led_hue(byte row, byte led, int hue) {
       B = q;
     }
 
-    set_led_rgb(row,led,byte(R*(float)(__max_brightness)),byte(G*(float)(__max_brightness)),byte(B*(float)(__max_brightness)));   
-}
-
-void set_row_byte_hue(byte row, byte data_byte, int hue) {
-  byte led;
-  for(led = 0; led <= __max_led; led++) {
-    if( (data_byte>>led)&(B00000001) ) {
-      set_led_hue(row,led,hue);
-    }
-    else {
-      set_led_rgb(row,led,0,0,0);
-    }
-  }
+    set_led_rgb(matrix,row,led,
+      byte(R*(float)(MATRIX_BRIGHTNESS)),
+      byte(G*(float)(MATRIX_BRIGHTNESS)),
+      byte(B*(float)(MATRIX_BRIGHTNESS)));   
 }
 
 void matrix_test(int speed) {
-  set_row_byte_rgb(0,1,__max_brightness,__max_brightness,__max_brightness);
+  // left top white point
+  for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+    set_led_rgb(matrix,0,0,
+      MATRIX_BRIGHTNESS,MATRIX_BRIGHTNESS,MATRIX_BRIGHTNESS);
+  }
   delay(speed*5);
-  set_matrix_rgb(0,0,0);
-
-  byte ctr1;
-  byte ctr2;
-  for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
-    set_matrix_rgb(ctr1,0,0);
+  // red matrix brightness
+  for(byte ctr1 = 0; ctr1 <= MATRIX_BRIGHTNESS; ctr1++) {
+    for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+      for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+        set_row_rgb(matrix,row,B11111111,ctr1,0,0);
+      }
+    }
     delay(speed/4);
   }
   delay(speed);
-  for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
-    set_matrix_rgb(0,ctr1,0);
+  // green matrix brightness
+  for(byte ctr1 = 0; ctr1 <= MATRIX_BRIGHTNESS; ctr1++) {
+    for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+      for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+        set_row_rgb(matrix,row,B11111111,0,ctr1,0);
+      }
+    }
     delay(speed/4);
   }
   delay(speed);
-  for(ctr1 = 0; ctr1 <= __max_brightness; ctr1++) {
-    set_matrix_rgb(0,0,ctr1);
+  // blue matrix brightness
+  for(byte ctr1 = 0; ctr1 <= MATRIX_BRIGHTNESS; ctr1++) {
+    for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+      for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+        set_row_rgb(matrix,row,B11111111,0,0,ctr1);
+      }
+    }
     delay(speed/4);
   }
   delay(speed);
-  set_matrix_rgb(0,0,0);
-  
-  for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
-    set_row_rgb(ctr1,__max_brightness,0,0);
-    delay(speed);
-    set_row_rgb(ctr1,0,__max_brightness,0);
-    delay(speed);
-    set_row_rgb(ctr1,0,0,__max_brightness);
-    delay(speed);
-    set_matrix_rgb(0,0,0);
+  matrix_clear();
+  // rgb row shift
+  for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+    for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+      set_row_rgb(matrix,row,B11111111,MATRIX_BRIGHTNESS,0,0);
+      delay(speed);
+      set_row_rgb(matrix,row,B11111111,0,MATRIX_BRIGHTNESS,0);
+      delay(speed);
+      set_row_rgb(matrix,row,B11111111,0,0,MATRIX_BRIGHTNESS);
+      delay(speed);
+    }
   }
-
-  for(ctr1 = 0; ctr1 <= __max_row; ctr1++) {
-    set_column_rgb(ctr1,__max_brightness,0,0);
-    delay(speed);
-    set_column_rgb(ctr1,0,__max_brightness,0);
-    delay(speed);
-    set_column_rgb(ctr1,0,0,__max_brightness);
-    delay(speed);
-    set_matrix_rgb(0,0,0);
+  matrix_clear();
+  // rgb column shift
+  for(byte led = 0; led <= ROW_LEDS-1; led++) {
+    for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+      for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+        set_led_rgb(matrix,row,led,MATRIX_BRIGHTNESS,0,0);
+      }
+      delay(speed);
+      for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+        set_led_rgb(matrix,row,led,0,MATRIX_BRIGHTNESS,0);
+      }
+      delay(speed);
+      for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+        set_led_rgb(matrix,row,led,0,0,MATRIX_BRIGHTNESS);
+      }
+      delay(speed);
+    }
   }
-  
-  for(ctr1 = 0; ctr1 < speed*10; ctr1++) { 
-    set_led_hue((byte)(random(__max_row+1)),(byte)(random(__max_led+1)),(int)(random(360)));
+  matrix_clear();
+  // random led
+  for(byte ctr1 = 0; ctr1 < speed*10; ctr1++) { 
+    for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+      set_led_hue(matrix,(byte)(random(MATRIX_ROWS)),(byte)(random(ROW_LEDS)),(int)(random(360)));
+    }
   }
   delay(speed*10);
-  set_matrix_rgb(0,0,0);
+  matrix_clear();
 }
 
-unsigned long measurement()
-{
+void drawEyes(const uint8_t* eyePoint, uint8_t pupilX, uint8_t pupilY) {
+  for(byte matrix = 0; matrix <= MATRIX_COUNT-1; matrix++) {
+    for(byte row = 0; row <= MATRIX_ROWS-1; row++) {
+      
+      byte eye;
+      if(matrix != 0) {
+        // right eye
+        eye = pgm_read_byte_near(eyePoint+row);
+      } else {
+        // left eye
+        eye = bit_reverse(pgm_read_byte_near(eyePoint+row));
+      }
+
+      // insert pupil
+      if(row==pupilY || row==pupilY+1) {
+        eye = eye-(3<<pupilX);
+      }
+
+      if(eyeOffset == EVIL_EYE) {
+        //set_row_byte_rgb(ctr1,image,__max_brightness,0,0);
+        set_row_hue(matrix,row,eye,300);
+      } else if(eyeOffset == NICE_EYE) {
+        //set_row_byte_rgb(ctr1,image,0,__max_brightness,0);
+        set_row_hue(matrix,row,eye,100);
+      } else {
+        //set_row_byte_rgb(ctr1,image,0,0,__max_brightness);
+        set_row_hue(matrix,row,eye,220);//(int)(random(360)));
+      }
+    }
+  }
+  #ifdef DEBUG
+    //printf_P(PSTR("pupil: x=%d, y=%d\n\r"), pupilX, pupilY);
+  #endif
+  delay(10);
+}
+
+byte bit_reverse( byte x ) { 
+  x = ((x >> 1) & 0x55) | ((x << 1) & 0xaa); 
+  x = ((x >> 2) & 0x33) | ((x << 2) & 0xcc); 
+  x = ((x >> 4) & 0x0f) | ((x << 4) & 0xf0); 
+  return x;    
+}
+
+unsigned long measurement() {
   unsigned long cm;
   noInterrupts();
-  digitalWrite(__trig_pin,LOW);
+  digitalWrite(TRIG_PIN,LOW);
   delayMicroseconds(2);  
-  digitalWrite(__trig_pin,HIGH);
+  digitalWrite(TRIG_PIN,HIGH);
   delayMicroseconds(10);      
-  digitalWrite(__trig_pin,LOW);   
-  cm = pulseIn(__echo_pin,HIGH,10000);
+  digitalWrite(TRIG_PIN,LOW);   
+  cm = pulseIn(ECHO_PIN,HIGH,10000);
   interrupts();
   if(cm == 0)
     return 200;    
