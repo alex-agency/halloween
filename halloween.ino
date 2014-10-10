@@ -162,6 +162,7 @@ uint8_t pupilX = 3, pupilY = 3; // Current pupil position
 uint8_t newX = 3, newY = 3; // Next pupil position
 int8_t  dX   = 0, dY   = 0; // Distance from prior to new position
 unsigned long sonar = 200; // Distance to sonar in cm
+uint8_t flashCountdown = 0; // flash duration
 
 // Declare serial output
 static int serial_putchar(char c, FILE *) {
@@ -291,13 +292,15 @@ void loop()
       newX = 3; pupilX = 3;
     }
     if(digitalRead(PIR_PIN) == HIGH) {
-      flash();
+      flashCountdown = random(10, 1000);
     }
   } else if(digitalRead(PIR_PIN) == LOW) {
     eyeOffset = BORED_EYE;
   } else {
     eyeOffset = NICE_EYE;
   }
+
+  flash();
 
   blinkCountdown--;
   if (blinkCountdown == 0) { 
@@ -575,12 +578,32 @@ unsigned long measurement() {
 }
 
 void flash() {
-  digitalWrite(RELAY1_PIN, HIGH);
-  delay(random(10,100));
-  digitalWrite(RELAY2_PIN, HIGH);
-  delay(random(10,100));
-  digitalWrite(RELAY1_PIN, LOW);
-  delay(random(10,100));
-  digitalWrite(RELAY2_PIN, LOW); 
+  flashCountdown--;
+
+  if(flashCountdown == 0) {
+    digitalWrite(RELAY1_PIN, LOW);
+    digitalWrite(RELAY2_PIN, LOW);  
+    return;
+  }
+
+  if(flashCountdown < random(5,2000)) {
+    digitalWrite(RELAY1_PIN, HIGH);
+    return;
+  }
+
+  if(flashCountdown < random(5,2000)) {
+    digitalWrite(RELAY2_PIN, HIGH);
+    return;
+  }
+
+  if(flashCountdown < random(5,2000)) {
+    digitalWrite(RELAY1_PIN, LOW);
+    return;
+  }
+
+  if(flashCountdown < random(5,2000)) {
+    digitalWrite(RELAY2_PIN, LOW);
+    return;
+  }
 }
 
