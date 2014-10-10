@@ -6,6 +6,8 @@
 #define PIR_PIN  7
 #define TRIG_PIN  6
 #define ECHO_PIN  5
+#define RELAY1_PIN  4
+#define RELAY2_PIN  3
 
 #define TIMER1_MAX  0xFFFF // 16 bit CTR
 #define TIMER1_CNT  0x130 // 32 levels --> 0x0130; 38 --> 0x0157 (flicker)
@@ -186,6 +188,11 @@ void setup() {
   // Initialize sonar
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
+  // Initialize relays
+  pinMode(RELAY1_PIN, OUTPUT);
+  digitalWrite(RELAY1_PIN, LOW);
+  pinMode(RELAY2_PIN, OUTPUT);
+  digitalWrite(RELAY2_PIN, LOW);
 }
 
 void setup_timer1_ovf() {
@@ -282,6 +289,9 @@ void loop()
     if(pupilY != 4) {
       newY = 4; pupilY = 4;
       newX = 3; pupilX = 3;
+    }
+    if(digitalRead(PIR_PIN) == HIGH) {
+      flash();
     }
   } else if(digitalRead(PIR_PIN) == LOW) {
     eyeOffset = BORED_EYE;
@@ -563,3 +573,14 @@ unsigned long measurement() {
     return 200;    
   return cm / 58;
 }
+
+void flash() {
+  digitalWrite(RELAY1_PIN, HIGH);
+  delay(random(10,100));
+  digitalWrite(RELAY2_PIN, HIGH);
+  delay(random(10,100));
+  digitalWrite(RELAY1_PIN, LOW);
+  delay(random(10,100));
+  digitalWrite(RELAY2_PIN, LOW); 
+}
+
