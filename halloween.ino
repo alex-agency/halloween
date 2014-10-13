@@ -163,6 +163,7 @@ uint8_t newX = 3, newY = 3; // Next pupil position
 int8_t  dX   = 0, dY   = 0; // Distance from prior to new position
 unsigned long sonar = 200; // Distance to sonar in cm
 uint8_t flashCountdown = 0; // flash duration
+bool pir = false;
 
 // Declare serial output
 static int serial_putchar(char c, FILE *) {
@@ -185,7 +186,7 @@ void setup() {
   setup_timer1_ovf();
   matrix_test(20);
   // Initialize PIR sensor
-  pinMode(PIR_PIN,INPUT);
+  pinMode(PIR_PIN,INPUT_PULLUP);
   // Initialize sonar
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
@@ -291,9 +292,16 @@ void loop()
       newY = 4; pupilY = 4;
       newX = 3; pupilX = 3;
     }
-    if(digitalRead(PIR_PIN) == HIGH) {
-      flashCountdown = random(10, 1000);
+    if(pir) {
+      flashCountdown = 5;
     }
+    if(flashCountdown == 0) {
+      digitalWrite(RELAY1_PIN, LOW);
+      digitalWrite(RELAY2_PIN, LOW);
+      delay(1000);
+      pir = digitalRead(PIR_PIN);
+    }
+
   } else if(digitalRead(PIR_PIN) == LOW) {
     eyeOffset = BORED_EYE;
   } else {
@@ -578,30 +586,28 @@ unsigned long measurement() {
 }
 
 void flash() {
-  flashCountdown--;
-
-  if(flashCountdown == 0) {
-    digitalWrite(RELAY1_PIN, LOW);
-    digitalWrite(RELAY2_PIN, LOW);  
+  if(flashCountdown == 0) {  
     return;
   }
+  
+  flashCountdown--;
 
-  if(flashCountdown < random(5,2000)) {
+  if(flashCountdown > random(1,100)) {
     digitalWrite(RELAY1_PIN, HIGH);
     return;
   }
 
-  if(flashCountdown < random(5,2000)) {
+  if(flashCountdown > random(1,100)) {
     digitalWrite(RELAY2_PIN, HIGH);
     return;
   }
 
-  if(flashCountdown < random(5,2000)) {
+  if(flashCountdown > random(1,100)) {
     digitalWrite(RELAY1_PIN, LOW);
     return;
   }
 
-  if(flashCountdown < random(5,2000)) {
+  if(flashCountdown > random(1,100)) {
     digitalWrite(RELAY2_PIN, LOW);
     return;
   }
