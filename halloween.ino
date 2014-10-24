@@ -286,30 +286,6 @@ ISR(TIMER1_OVF_vect) {
 
 void loop() 
 {  
-  if(sonar < 100) {
-    eyeOffset = EVIL_EYE;
-    if(pupilY != 4) {
-      newY = 4; pupilY = 4;
-      newX = 3; pupilX = 3;
-    }
-    if(pir) {
-      flashCountdown = 5;
-    }
-    if(flashCountdown == 0) {
-      digitalWrite(RELAY1_PIN, LOW);
-      digitalWrite(RELAY2_PIN, LOW);
-      delay(1000);
-      pir = digitalRead(PIR_PIN);
-    }
-
-  } else if(digitalRead(PIR_PIN) == LOW) {
-    eyeOffset = BORED_EYE;
-  } else {
-    eyeOffset = NICE_EYE;
-  }
-
-  flash();
-
   blinkCountdown--;
   if (blinkCountdown == 0) { 
     blinkCountdown = random(5, 150);
@@ -319,6 +295,29 @@ void loop()
       //printf_P(PSTR("cm: %d\n\r"), sonar);
     #endif
   }
+
+  if(flashCountdown == 0) {
+    pir = digitalRead(PIR_PIN);
+  }
+  
+  if(sonar < 100) {
+    eyeOffset = EVIL_EYE;
+    if(pupilY != 4) {
+      newY = 4; pupilY = 4;
+      newX = 3; pupilX = 3;
+    }
+    if(pir) {
+      flashCountdown = 100;
+    }
+  }
+  else if(pir) {
+    eyeOffset = NICE_EYE;  
+  }
+  else {
+    eyeOffset = BORED_EYE;
+  }
+
+  led_update();
   
   const uint8_t* eye = 
             &blinkImg[
@@ -585,31 +584,22 @@ unsigned long measurement() {
   return cm / 58;
 }
 
-void flash() {
+void led_update() {
   if(flashCountdown == 0) {  
     return;
   }
   
   flashCountdown--;
 
-  if(flashCountdown > random(1,100)) {
-    digitalWrite(RELAY1_PIN, HIGH);
-    return;
-  }
-
-  if(flashCountdown > random(1,100)) {
-    digitalWrite(RELAY2_PIN, HIGH);
-    return;
-  }
-
-  if(flashCountdown > random(1,100)) {
+  if(flashCountdown <= 10) {
     digitalWrite(RELAY1_PIN, LOW);
-    return;
+    return;  
   }
 
-  if(flashCountdown > random(1,100)) {
-    digitalWrite(RELAY2_PIN, LOW);
-    return;
+  if(flashCountdown > random(0,100)) {
+    digitalWrite(RELAY1_PIN, HIGH);
+  } else {
+    digitalWrite(RELAY1_PIN, LOW);
   }
+
 }
-
