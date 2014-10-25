@@ -300,14 +300,14 @@ void loop()
     pir = digitalRead(PIR_PIN);
   }
   
-  if(sonar < 100) {
+  if(sonar < 150) {
     eyeOffset = EVIL_EYE;
     if(pupilY != 4) {
       newY = 4; pupilY = 4;
       newX = 3; pupilX = 3;
     }
     if(pir) {
-      flashCountdown = 100;
+      flashCountdown = 30;
     }
   }
   else if(pir) {
